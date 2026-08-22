@@ -14,13 +14,13 @@ public class TelemetryHub : Hub
 
     public override async Task OnConnectedAsync()
     {
-        _logger.Info($"UI bağlandı: {Context.ConnectionId}");
+        _logger.SignalRInfo($"UI bağlandı: {Context.ConnectionId}");
         await base.OnConnectedAsync();
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        _logger.Info($"UI ayrıldı: {Context.ConnectionId}");
+        _logger.SignalRInfo($"UI ayrıldı: {Context.ConnectionId}");
         await base.OnDisconnectedAsync(exception);
     }
 }

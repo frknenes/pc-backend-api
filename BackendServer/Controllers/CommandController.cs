@@ -31,11 +31,11 @@ public class CommandController : ControllerBase
 
         if (!CommandNames.All.Contains(cmd))
         {
-            _logger.Error($"Bilinmeyen komut: {cmd}");
+            _logger.CommandError($"Bilinmeyen komut: {cmd}");
             return BadRequest("Bilinmeyen komut");
         }
         
-        _logger.Info($"HTTP Command alındı: {cmd}");
+        _logger.CommandInfo($"HTTP Command alındı: {cmd}");
         
         await _commandService.SendCommand(cmd);
         

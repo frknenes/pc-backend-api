@@ -18,10 +18,11 @@ builder.Services.AddSingleton<CommandService>();
 // ------------------- CORS -------------------
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowReact", policy =>
+    options.AddPolicy("AllowUi", policy =>
     {
         policy
-            .WithOrigins("http://localhost:3000", "http://127.0.0.1:3000") // React address
+            // Development UI can run from Expo Go, Metro or Expo Web on the LAN.
+            .SetIsOriginAllowed(_ => builder.Environment.IsDevelopment())
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials(); 
@@ -32,7 +33,7 @@ var app = builder.Build();
 
 // -------------------- Middleware -------------------
 app.UseRouting();
-app.UseCors("AllowReact");
+app.UseCors("AllowUi");
 
 app.MapControllers();
 app.MapHub<TelemetryHub>("/telemetry");

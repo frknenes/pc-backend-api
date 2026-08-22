@@ -13,7 +13,7 @@ public class CommandService
 
     public async Task SendCommand(string command)
     {
-        _logger.Info("UI'dan komut alındı: " + command);
+        _logger.CommandInfo("UI'dan komut alındı: " + command);
         await _tcpServer.SendCommand(command);
     }
 }

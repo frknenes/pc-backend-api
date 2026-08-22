@@ -26,10 +26,10 @@ public class TcpServerService
 
     public void Start()
     {
-        _listener = new TcpListener(IPAddress.Any, 6000);
+        _listener = new TcpListener(IPAddress.Any, 5005);
         _listener.Start();
 
-        _logger.Info("TCP Server başlatıldı. Raspberry bekleniyor...");
+        _logger.TcpInfo("TCP Server başlatıldı. Raspberry bekleniyor...");
         Task.Run(AcceptClientLoop);
     }
 
@@ -38,22 +38,21 @@ public class TcpServerService
         while (true)
         {
             _raspberryClient = await _listener.AcceptTcpClientAsync();
-           
+
             _lastPongTime = DateTime.Now;
-            
+
             var stream = _raspberryClient.GetStream();
-            _reader = new StreamReader(stream, Encoding.UTF8);
-            _writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
-           
+            _reader = new StreamReader(stream, new UTF8Encoding(false));
+            _writer = new StreamWriter(stream, new UTF8Encoding(false)) { AutoFlush = true };
             _heartbeatCts = new CancellationTokenSource();
             _ = Task.Run(() => HeartbeatLoop(_heartbeatCts.Token));
-            
-            _logger.Info("Raspberry Pi bağlandı.");
-            
+
+            _logger.TcpInfo("Raspberry Pi bağlandı.");
+
             _ = Task.Run(ListenClientLoop);
         }
     }
-    
+
     private async Task ListenClientLoop()
     {
         try
@@ -65,40 +64,42 @@ public class TcpServerService
                 var line = await _reader.ReadLineAsync();
                 if (line == null)
                 {
-                    _logger.Error("Raspberry bağlantısı koptu.");
+                    _logger.TcpError("Raspberry bağlantısı koptu.");
                     break;
                 }
+
+                line = line.TrimStart('\uFEFF');
 
                 if (line == "PONG")
                 {
                     _lastPongTime = DateTime.Now;
                     continue;
                 }
-                
-                _logger.Info("RX: " + line);
+
+                _logger.TelemetryInfo("RX: " + line);
                 await _telemetryService.HandleRawTelemetry(line);
             }
         }
         catch (Exception ex)
         {
-            _logger.Error("TCP okuma hatası: " + ex.Message);
+            _logger.TcpError("TCP okuma hatası: " + ex.Message);
         }
         finally
         {
             _reader?.Close();
             _writer?.Close();
             _raspberryClient?.Close();
-            
+
             _heartbeatCts?.Cancel();
             _heartbeatCts = null;
-            
+
             _reader = null;
             _writer = null;
             _raspberryClient = null;
             _pingTimer = null;
             _lastPongTime = DateTime.MinValue;
-            
-            _logger.Info("Bağlantı temizlendi.");
+
+            _logger.TcpInfo("Bağlantı temizlendi.");
         }
     }
 
@@ -106,12 +107,12 @@ public class TcpServerService
     {
         if (_raspberryClient == null || _writer == null)
         {
-            _logger.Error("Raspberry bağlı değil, komut gönderilemedi.");
+            _logger.CommandError("Raspberry bağlı değil, komut gönderilemedi.");
             return;
         }
 
-        var msg = "CMD|" + command;
-        
+        var msg = ("CMD|" + command).TrimStart('\uFEFF');
+
         await _socketSemaphore.WaitAsync();
         try
         {
@@ -122,9 +123,9 @@ public class TcpServerService
             _socketSemaphore.Release();
         }
 
-        _logger.Info("TX: " + msg);
+        _logger.CommandInfo("TX: " + msg);
     }
-    
+
     private async Task HeartbeatLoop(CancellationToken token)
     {
         try
@@ -136,7 +137,7 @@ public class TcpServerService
 
                 if (_lastPongTime != DateTime.MinValue && (DateTime.Now - _lastPongTime).TotalSeconds > 3)
                 {
-                    _logger.Error("Watchdog timeout! Raspberry cevap vermiyor.");
+                    _logger.TcpError("Watchdog timeout! Raspberry cevap vermiyor.");
                     _raspberryClient?.Close();
                     break;
                 }
@@ -148,7 +149,7 @@ public class TcpServerService
                 }
                 catch
                 {
-                    _logger.Error("PING gönderilemedi.");
+                    _logger.TcpError("PING gönderilemedi.");
                     _raspberryClient?.Close();
                     break;
                 }
@@ -156,14 +157,14 @@ public class TcpServerService
                 {
                     _socketSemaphore.Release();
                 }
-                
-                await Task.Delay(500,token);
+
+                await Task.Delay(500, token);
             }
         }
         catch (TaskCanceledException)
         {
-            
+
         }
     }
-    
+
 }

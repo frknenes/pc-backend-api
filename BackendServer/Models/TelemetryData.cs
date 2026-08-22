@@ -11,23 +11,22 @@ public class TelemetryData
     public MotionData? Motion { get; set; }
     public PressureData? Pressure { get; set; }
     public PowerData? Power { get; set; }
+    public EmergencyData? Emergency { get; set; }
 }
 
 public class TemperatureData
 {
-    // Battery
-    public double BT1 { get; set; } // Batarya sıcaklık verileri
-    public double BT2 { get; set; }
-    public double BT3 { get; set; }
-    public double BT4 { get; set; }
-    
     // Battery temperature data packs
-    public double BT5 { get; set; } // Batarya sıcaklık verileri paketi
+    public double BT1 { get; set; } // Reyhan
+    public double BT2 { get; set; } // Reyhan
+    public double BT3 { get; set; } // Barış 1
+    public double BT4 { get; set; }
+    public double BT5 { get; set; }
     public double BT6 { get; set; }
     public double BT7 { get; set; }         
     public double BT8 { get; set; }
     public double BT9 { get; set; }
-    public double BT10 { get; set; }
+    public double BT10 { get; set; } // Barış 2
     public double BT11 { get; set; }
     public double BT12 { get; set; }
     public double BT13 { get; set; }
@@ -44,15 +43,16 @@ public class TemperatureData
 public class CurrentData
 {
     // Battery current data packs
-    public double I1 { get; set; } // Batarya akım verileri paketi
-    public double I2 { get; set; }
-    public double I3 { get; set; }
+    public double I1 { get; set; } // Reyhan
+    public double I2 { get; set; } // Reyhan
+    public double I3 { get; set; } // Barış 1
+    public double I4 { get; set; } // Barış 2
 }
 
 public class VoltageData
 {
     // Battery voltage data packs
-    public double V1 { get; set; } // Batarya voltaj verileri paketi
+    public double V1 { get; set; } //Barış 1
     public double V2 { get; set; }
     public double V3 { get; set; }
     public double V4 { get; set; }
@@ -65,7 +65,7 @@ public class VoltageData
     public double V11 { get; set; }
     public double V12 { get; set; }
     public double V13 { get; set; }
-    public double V14 { get; set; }
+    public double V14 { get; set; } //Barış 2
     public double V15 { get; set; }
     public double V16 { get; set; }
     public double V17 { get; set; }
@@ -78,8 +78,8 @@ public class VoltageData
     public double V24 { get; set; }
     public double V25 { get; set; }
     public double V26 { get; set; }
-    public double V27 { get; set; }
-    public double V28 { get; set; }
+    public double V27 { get; set; } //Reyhan
+    public double V28 { get; set; } //Reyhan
     
 }
 
@@ -111,19 +111,28 @@ public class MotionData
     public double YX { get; set; }
     
     // Momentary speed-Average Speed
-    public double MS { get; set; } // Anlık hız-Ortalama hız
+    //public double MS { get; set; } // Anlık hız-Ortalama hız
     public double AS { get; set; }
     
     // Reflector counter
-    public double RC { get; set; } // Reflektör sayacı
+    public double RC1 { get; set; } // Reflektör sayacı
+    public double RC2 { get; set; }
+    public double RC3 { get; set; }
+
 }
 
 public class PressureData
 {
-    public double P1 { get; set; } // Kapsül fren basıncı verisi
+    public double P1 { get; set; } // Reyhan
+    public double P2 { get; set; } // Reyhan
 }
 
 public class PowerData
 {
     public double PW1 { get; set; } // Güc tüketimi verileri
+}
+
+public class EmergencyData
+{
+    public int ACIL_DURUM { get; set; } // Donanım acil durumu bildirimi
 }

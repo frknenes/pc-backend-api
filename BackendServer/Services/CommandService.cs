@@ -11,9 +11,9 @@ public class CommandService
         _logger = logger;
     }
 
-    public async Task SendCommand(string command)
+    public async Task<bool> SendCommand(string command)
     {
         _logger.CommandInfo("UI'dan komut alındı: " + command);
-        await _tcpServer.SendCommand(command);
+        return await _tcpServer.SendCommand(command);
     }
 }

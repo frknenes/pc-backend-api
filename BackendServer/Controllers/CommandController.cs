@@ -37,12 +37,22 @@ public class CommandController : ControllerBase
         
         _logger.CommandInfo($"HTTP Command alındı: {cmd}");
         
-        await _commandService.SendCommand(cmd);
+        var sent = await _commandService.SendCommand(cmd);
+        if (!sent)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                status = "ERROR",
+                message = "Raspberry bağlı değil veya komut gönderilemedi.",
+                sentCommand = cmd,
+                time = DateTime.Now
+            });
+        }
         
         return Ok(new
         {
             status = "OK",
-            sentCommand = commandData.Command,
+            sentCommand = cmd,
             time = DateTime.Now
         });
     }

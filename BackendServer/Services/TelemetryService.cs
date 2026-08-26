@@ -18,9 +18,6 @@ public class TelemetryService
 
     public async Task HandleRawTelemetry(string rawData)
     {
-        if (IsEmergencyOnlyTelemetry(rawData))
-            return;
-
         var telemetry = ParseTelemetry(rawData);
 
         if (telemetry == null)
@@ -31,21 +28,6 @@ public class TelemetryService
 
         // UI'ya model olarak gönderiyor
         await _hub.Clients.All.SendAsync("telemetry", telemetry);
-    }
-
-    private static bool IsEmergencyOnlyTelemetry(string raw)
-    {
-        var separatorIndex = raw.IndexOf('|');
-        var payload = separatorIndex >= 0 ? raw[(separatorIndex + 1)..] : raw;
-
-        if (string.IsNullOrWhiteSpace(payload)) return false;
-
-        var fields = payload.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return fields.Length > 0 && fields.All(field =>
-        {
-            var kv = field.Split(':', StringSplitOptions.TrimEntries);
-            return kv.Length == 2 && string.Equals(kv[0], "ACIL_DURUM", StringComparison.OrdinalIgnoreCase);
-        });
     }
 
     private TelemetryData? ParseTelemetry(string raw)
@@ -163,27 +145,7 @@ public class TelemetryService
                         telemetry.Temperature.BT16 = value;
                         hasTelemetryData = true;
                         break;
-                    case "BT17":
-                        telemetry.Temperature ??= new TemperatureData();
-                        telemetry.Temperature.BT17 = value;
-                        hasTelemetryData = true;
-                        break;
-                    case "BT18":
-                        telemetry.Temperature ??= new TemperatureData();
-                        telemetry.Temperature.BT18 = value;
-                        hasTelemetryData = true;
-                        break;
-                    case "BT19":
-                        telemetry.Temperature ??= new TemperatureData();
-                        telemetry.Temperature.BT19 = value;
-                        hasTelemetryData = true;
-                        break;
-                    case "BT20":
-                        telemetry.Temperature ??= new TemperatureData();
-                        telemetry.Temperature.BT20 = value;
-                        hasTelemetryData = true;
-                        break;
-
+                    
                     // Current
                     case "I1": 
                         telemetry.Current ??= new CurrentData();
@@ -200,12 +162,7 @@ public class TelemetryService
                         telemetry.Current.I3 = value; 
                         hasTelemetryData = true;
                         break;
-                    case "I4":
-                        telemetry.Current ??= new CurrentData();
-                        telemetry.Current.I4 = value;
-                        hasTelemetryData = true;
-                        break;
-
+                   
                     // Voltage
                     case "V1": 
                         telemetry.Voltage ??= new VoltageData();

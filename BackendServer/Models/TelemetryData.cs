@@ -33,10 +33,10 @@ public class TemperatureData
     public double? BT14 { get; set; }
     public double? BT15 { get; set; }
     public double? BT16 { get; set; }
-    public double? BT17 { get; set; }
-    public double? BT18 { get; set; }
-    public double? BT19 { get; set; }
-    public double? BT20 { get; set; }
+    // public double? BT17 { get; set; }
+    // public double? BT18 { get; set; }
+    // public double? BT19 { get; set; }
+    // public double? BT20 { get; set; }
     
 }
 
@@ -46,7 +46,7 @@ public class CurrentData
     public double? I1 { get; set; } // Reyhan
     public double? I2 { get; set; } // Reyhan
     public double? I3 { get; set; } // Barış 1
-    public double? I4 { get; set; } // Barış 2
+    // public double? I4 { get; set; } 
 }
 
 public class VoltageData

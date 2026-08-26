@@ -1,3 +1,5 @@
+using BackendServer.Models;
+
 namespace BackendServer.Services;
 
 public class CommandService
@@ -11,7 +13,7 @@ public class CommandService
         _logger = logger;
     }
 
-    public async Task<bool> SendCommand(string command)
+    public async Task<CommandExecutionResult> SendCommand(string command)
     {
         _logger.CommandInfo("UI'dan komut alındı: " + command);
         return await _tcpServer.SendCommand(command);

@@ -37,14 +37,22 @@ public class CommandController : ControllerBase
         
         _logger.CommandInfo($"HTTP Command alındı: {cmd}");
         
-        var sent = await _commandService.SendCommand(cmd);
-        if (!sent)
+        var result = await _commandService.SendCommand(cmd);
+        if (!result.Success)
         {
-            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            var statusCode = result.Reason switch
+            {
+                "not_connected" or "send_error" or "ack_timeout" => StatusCodes.Status503ServiceUnavailable,
+                "execution_error" => StatusCodes.Status500InternalServerError,
+                _ => StatusCodes.Status409Conflict
+            };
+            return StatusCode(statusCode, new
             {
                 status = "ERROR",
-                message = "Raspberry bağlı değil veya komut gönderilemedi.",
+                message = result.Reason,
+                commandId = result.CommandId,
                 sentCommand = cmd,
+                controlState = result.ControlState,
                 time = DateTime.Now
             });
         }
@@ -52,7 +60,9 @@ public class CommandController : ControllerBase
         return Ok(new
         {
             status = "OK",
+            commandId = result.CommandId,
             sentCommand = cmd,
+            controlState = result.ControlState,
             time = DateTime.Now
         });
     }

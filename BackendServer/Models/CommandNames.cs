@@ -4,6 +4,8 @@ public static class CommandNames
 {
     public const string Forward = "FORWARD";
     public const string Backward = "BACKWARD";
+    public const string VfdIncrease = "VFD_INCREASE";
+    public const string VfdDecrease = "VFD_DECREASE";
     public const string FrontBrake = "FRONT_BRAKE";
     public const string RearBrake = "REAR_BRAKE";
     public const string Brake = "BRAKE";
@@ -16,6 +18,8 @@ public static class CommandNames
     {
         Forward,
         Backward,
+        VfdIncrease,
+        VfdDecrease,
         FrontBrake,
         RearBrake,
         Brake,

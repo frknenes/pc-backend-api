@@ -12,6 +12,7 @@ public class TelemetryData
     public PressureData? Pressure { get; set; }
     public PowerData? Power { get; set; }
     public EmergencyData? Emergency { get; set; }
+    public AutonomousDriveData? AutonomousDrive { get; set; }
 }
 
 public class TemperatureData
@@ -135,4 +136,12 @@ public class PowerData
 public class EmergencyData
 {
     public int? ACIL_DURUM { get; set; } // Donanım acil durumu bildirimi
+}
+
+public class AutonomousDriveData
+{
+    public int? F { get; set; }  // Otonom ileri
+    public int? B { get; set; }  // Otonom geri
+    public int? BR { get; set; } // Otonom fren
+    public int? E { get; set; }  // Otonom boşta
 }

@@ -445,6 +445,28 @@ public class TelemetryService
                         telemetry.Emergency.ACIL_DURUM = (int)value ;
                         hasTelemetryData = true;
                         break;
+
+                    // STM32 autonomous drive feedback
+                    case "F":
+                        telemetry.AutonomousDrive ??= new AutonomousDriveData();
+                        telemetry.AutonomousDrive.F = (int)value;
+                        hasTelemetryData = true;
+                        break;
+                    case "B":
+                        telemetry.AutonomousDrive ??= new AutonomousDriveData();
+                        telemetry.AutonomousDrive.B = (int)value;
+                        hasTelemetryData = true;
+                        break;
+                    case "BR":
+                        telemetry.AutonomousDrive ??= new AutonomousDriveData();
+                        telemetry.AutonomousDrive.BR = (int)value;
+                        hasTelemetryData = true;
+                        break;
+                    case "E":
+                        telemetry.AutonomousDrive ??= new AutonomousDriveData();
+                        telemetry.AutonomousDrive.E = (int)value;
+                        hasTelemetryData = true;
+                        break;
                 }
             }
 

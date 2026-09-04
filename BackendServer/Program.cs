@@ -8,7 +8,9 @@ builder.Services.AddControllers();
 builder.Services.AddSignalR();
 
 builder.Services.AddSingleton<LoggingService>();
+builder.Services.AddHostedService(provider => provider.GetRequiredService<LoggingService>());
 builder.Services.AddSingleton<TelemetryService>();
+builder.Services.AddHostedService(provider => provider.GetRequiredService<TelemetryService>());
 builder.Services.AddSingleton<TcpServerService>();
 builder.Services.AddSingleton<CommandService>();
 

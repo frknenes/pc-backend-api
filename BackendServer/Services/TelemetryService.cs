@@ -2,18 +2,34 @@ using BackendServer.Models;
 using BackendServer.Hubs;
 using Microsoft.AspNetCore.SignalR;
 using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace BackendServer.Services;
 
-public class TelemetryService
+public class TelemetryService : IHostedService, IDisposable
 {
     private readonly IHubContext<TelemetryHub> _hub;
     private readonly LoggingService _logger;
+    private readonly object _telemetryLock = new();
+    private readonly TimeSpan _fieldStaleTimeout;
+    private readonly Dictionary<string, DateTime> _fieldLastSeenUtc = new(StringComparer.Ordinal);
+    private static readonly TimeSpan UiPublishInterval = TimeSpan.FromMilliseconds(200);
+    private const double WattsPerKilowatt = 1000d;
+    private static readonly Regex TelemetryFieldRegex = new(
+        @"(?<key>[A-Za-z_][A-Za-z0-9_]*):(?<value>[-+]?(?:\d+(?:[\.,]\d+)?|[\.,]\d+)(?:[eE][-+]?\d+)?)",
+        RegexOptions.Compiled);
+    private TelemetryData? _latestTelemetry;
+    private bool _hasUnpublishedTelemetry;
+    private CancellationTokenSource? _publishCts;
+    private Task? _publishTask;
 
-    public TelemetryService(IHubContext<TelemetryHub> hub, LoggingService logger)
+    public TelemetryService(IHubContext<TelemetryHub> hub, LoggingService logger, IConfiguration configuration)
     {
         _hub = hub;
         _logger = logger;
+        _fieldStaleTimeout = TimeSpan.FromMilliseconds(Math.Max(
+            100,
+            configuration.GetValue<int?>("Telemetry:FieldStaleTimeoutMs") ?? 2500));
     }
 
     public async Task HandleRawTelemetry(string rawData)
@@ -26,8 +42,261 @@ public class TelemetryService
             return;
         }
 
-        // UI'ya model olarak gönderiyor
-        await _hub.Clients.All.SendAsync("telemetry", telemetry);
+        lock (_telemetryLock)
+        {
+            RecordFieldUpdates(telemetry, DateTime.UtcNow);
+            _latestTelemetry = MergeTelemetry(_latestTelemetry, telemetry);
+            _hasUnpublishedTelemetry = true;
+        }
+
+        await Task.CompletedTask;
+    }
+
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        _publishCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _publishTask = Task.Run(() => PublishTelemetryLoop(_publishCts.Token), CancellationToken.None);
+
+        return Task.CompletedTask;
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        if (_publishCts == null || _publishTask == null) return;
+
+        await _publishCts.CancelAsync();
+
+        try
+        {
+            await _publishTask.WaitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    public void Dispose()
+    {
+        _publishCts?.Dispose();
+    }
+
+    private async Task PublishTelemetryLoop(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(UiPublishInterval);
+
+        while (await timer.WaitForNextTickAsync(cancellationToken))
+        {
+            TelemetryData? snapshot;
+
+            lock (_telemetryLock)
+            {
+                if (!_hasUnpublishedTelemetry || _latestTelemetry == null) continue;
+
+                snapshot = CloneTelemetry(_latestTelemetry);
+                ExpireStaleFields(snapshot, DateTime.UtcNow);
+                CalculatePowerConsumption(snapshot);
+                _hasUnpublishedTelemetry = false;
+            }
+
+            await _hub.Clients.All.SendAsync("telemetry", snapshot, cancellationToken);
+        }
+    }
+
+    private static TelemetryData MergeTelemetry(TelemetryData? current, TelemetryData incoming)
+    {
+        current ??= new TelemetryData();
+        current.DeviceId = incoming.DeviceId;
+        current.TimeStamp = incoming.TimeStamp;
+
+        current.Temperature = MergeSection(current.Temperature, incoming.Temperature);
+        current.Current = MergeSection(current.Current, incoming.Current);
+        current.Voltage = MergeSection(current.Voltage, incoming.Voltage);
+        current.Motion = MergeSection(current.Motion, incoming.Motion);
+        current.Pressure = MergeSection(current.Pressure, incoming.Pressure);
+        current.Power = MergeSection(current.Power, incoming.Power);
+        current.Emergency = MergeSection(current.Emergency, incoming.Emergency);
+        current.AutonomousDrive = MergeSection(current.AutonomousDrive, incoming.AutonomousDrive);
+
+        return current;
+    }
+
+    private static TelemetryData CloneTelemetry(TelemetryData telemetry)
+    {
+        return MergeTelemetry(null, telemetry);
+    }
+
+    private static T? MergeSection<T>(T? current, T? incoming) where T : class, new()
+    {
+        if (incoming == null) return current;
+
+        current ??= new T();
+
+        foreach (var property in typeof(T).GetProperties())
+        {
+            var value = property.GetValue(incoming);
+            if (value != null)
+            {
+                property.SetValue(current, value);
+            }
+        }
+
+        return current;
+    }
+
+    private void RecordFieldUpdates(TelemetryData telemetry, DateTime receivedAtUtc)
+    {
+        RecordSectionUpdates(nameof(TelemetryData.Temperature), telemetry.Temperature, receivedAtUtc);
+        RecordSectionUpdates(nameof(TelemetryData.Current), telemetry.Current, receivedAtUtc);
+        RecordSectionUpdates(nameof(TelemetryData.Voltage), telemetry.Voltage, receivedAtUtc);
+        RecordSectionUpdates(nameof(TelemetryData.Motion), telemetry.Motion, receivedAtUtc);
+        RecordSectionUpdates(nameof(TelemetryData.Pressure), telemetry.Pressure, receivedAtUtc);
+        RecordSectionUpdates(nameof(TelemetryData.Power), telemetry.Power, receivedAtUtc);
+        RecordSectionUpdates(nameof(TelemetryData.Emergency), telemetry.Emergency, receivedAtUtc);
+        RecordSectionUpdates(nameof(TelemetryData.AutonomousDrive), telemetry.AutonomousDrive, receivedAtUtc);
+    }
+
+    private void RecordSectionUpdates<T>(string sectionName, T? section, DateTime receivedAtUtc) where T : class
+    {
+        if (section == null) return;
+
+        foreach (var property in typeof(T).GetProperties())
+        {
+            if (property.GetValue(section) != null)
+                _fieldLastSeenUtc[$"{sectionName}.{property.Name}"] = receivedAtUtc;
+        }
+    }
+
+    private void ExpireStaleFields(TelemetryData telemetry, DateTime nowUtc)
+    {
+        ExpireSection(nameof(TelemetryData.Temperature), telemetry.Temperature, nowUtc);
+        ExpireSection(nameof(TelemetryData.Current), telemetry.Current, nowUtc);
+        ExpireSection(nameof(TelemetryData.Voltage), telemetry.Voltage, nowUtc);
+        ExpireSection(nameof(TelemetryData.Motion), telemetry.Motion, nowUtc);
+        ExpireSection(nameof(TelemetryData.Pressure), telemetry.Pressure, nowUtc);
+        ExpireSection(nameof(TelemetryData.Power), telemetry.Power, nowUtc);
+        ExpireSection(nameof(TelemetryData.Emergency), telemetry.Emergency, nowUtc);
+        ExpireSection(nameof(TelemetryData.AutonomousDrive), telemetry.AutonomousDrive, nowUtc);
+    }
+
+    private void ExpireSection<T>(string sectionName, T? section, DateTime nowUtc) where T : class
+    {
+        if (section == null) return;
+
+        foreach (var property in typeof(T).GetProperties())
+        {
+            var key = $"{sectionName}.{property.Name}";
+            if (!_fieldLastSeenUtc.TryGetValue(key, out var lastSeenUtc) ||
+                nowUtc - lastSeenUtc >= _fieldStaleTimeout)
+            {
+                property.SetValue(section, null);
+            }
+        }
+    }
+
+    private static void CalculatePowerConsumption(TelemetryData telemetry)
+    {
+        telemetry.Power ??= new PowerData();
+
+        telemetry.Power.PW1 = SumAvailableValues(
+            telemetry.Voltage?.V1,
+            telemetry.Voltage?.V2,
+            telemetry.Voltage?.V3,
+            telemetry.Voltage?.V4,
+            telemetry.Voltage?.V5,
+            telemetry.Voltage?.V6,
+            telemetry.Voltage?.V7,
+            telemetry.Voltage?.V8,
+            telemetry.Voltage?.V9,
+            telemetry.Voltage?.V10,
+            telemetry.Voltage?.V11,
+            telemetry.Voltage?.V12,
+            telemetry.Voltage?.V13,
+            telemetry.Voltage?.V14,
+            telemetry.Voltage?.V15,
+            telemetry.Voltage?.V16,
+            telemetry.Voltage?.V17,
+            telemetry.Voltage?.V18,
+            telemetry.Voltage?.V19,
+            telemetry.Voltage?.V20,
+            telemetry.Voltage?.V21,
+            telemetry.Voltage?.V22,
+            telemetry.Voltage?.V23,
+            telemetry.Voltage?.V24,
+            telemetry.Voltage?.V25,
+            telemetry.Voltage?.V26) is { } hvVoltageSum &&
+            telemetry.Current?.I3 is { } hvCurrent
+                ? ToKilowatts(hvVoltageSum * hvCurrent)
+                : null;
+
+        telemetry.Power.PW2 = telemetry.Voltage?.V27 is { } altSystemVoltage &&
+                              telemetry.Current?.I1 is { } altSystemCurrent
+            ? ToKilowatts(altSystemVoltage * altSystemCurrent)
+            : null;
+
+        telemetry.Power.PW3 = telemetry.Voltage?.V28 is { } emergencyVoltage &&
+                              telemetry.Current?.I2 is { } emergencyCurrent
+            ? ToKilowatts(emergencyVoltage * emergencyCurrent)
+            : null;
+
+        telemetry.Power.PW4 = SumAvailableValues(telemetry.Power.PW1, telemetry.Power.PW2, telemetry.Power.PW3);
+    }
+
+    private static double ToKilowatts(double watts)
+    {
+        return watts / WattsPerKilowatt;
+    }
+
+    private static double? SumAvailableValues(params double?[] values)
+    {
+        var sum = 0d;
+        var hasValue = false;
+
+        foreach (var value in values)
+        {
+            if (!value.HasValue) continue;
+            hasValue = true;
+            sum += value.Value;
+        }
+
+        return hasValue ? sum : null;
+    }
+
+    private void LogPowerConsumption(TelemetryData telemetry)
+    {
+        if (telemetry.Power is not { } power ||
+            power.PW1 is null && power.PW2 is null && power.PW3 is null && power.PW4 is null)
+        {
+            return;
+        }
+
+        _logger.TelemetryInfo(
+            "TX POWER: " +
+            $"PW1(HV):{FormatPowerValue(power.PW1)}, " +
+            $"PW2(AS):{FormatPowerValue(power.PW2)}, " +
+            $"PW3(AD):{FormatPowerValue(power.PW3)}, " +
+            $"PW4(T):{FormatPowerValue(power.PW4)}");
+    }
+
+    private static string FormatPowerValue(double? value)
+    {
+        return value.HasValue
+            ? value.Value.ToString("0.###", CultureInfo.InvariantCulture)
+            : "null";
+    }
+
+    private static IEnumerable<(string Key, string Value)> ParseTelemetryFields(string payload)
+    {
+        foreach (Match match in TelemetryFieldRegex.Matches(payload))
+            yield return (match.Groups["key"].Value, match.Groups["value"].Value);
+    }
+
+    private static bool TryParseTelemetryDouble(string valueStr, out double value)
+    {
+        return double.TryParse(
+            valueStr.Trim().Replace(',', '.'),
+            NumberStyles.Any,
+            CultureInfo.InvariantCulture,
+            out value);
     }
 
     private TelemetryData? ParseTelemetry(string raw)
@@ -45,18 +314,13 @@ public class TelemetryService
                 DeviceId = deviceId,
             };
 
-            var fields = payload.Split(',');
             var hasTelemetryData = false;
 
-            foreach (var field in fields)
+            foreach (var (rawKey, valueStr) in ParseTelemetryFields(payload))
             {
-                var kv = field.Split(':');
-                if (kv.Length != 2) continue;
+                var key = rawKey.Trim().ToUpperInvariant();
 
-                var key = kv[0].Trim().ToUpperInvariant();
-                var valueStr = kv[1];
-
-                if (!double.TryParse(valueStr, NumberStyles.Any, CultureInfo.InvariantCulture, out double value))
+                if (!TryParseTelemetryDouble(valueStr, out double value))
                     continue;
 
                 if (double.IsNaN(value) || double.IsInfinity(value))
@@ -436,6 +700,21 @@ public class TelemetryService
                     case "PW1":
                         telemetry.Power ??= new PowerData();
                         telemetry.Power.PW1 = value;
+                        hasTelemetryData = true;
+                        break;
+                    case "PW2":
+                        telemetry.Power ??= new PowerData();
+                        telemetry.Power.PW2 = value;
+                        hasTelemetryData = true;
+                        break;
+                    case "PW3":
+                        telemetry.Power ??= new PowerData();
+                        telemetry.Power.PW3 = value;
+                        hasTelemetryData = true;
+                        break;
+                    case "PW4":
+                        telemetry.Power ??= new PowerData();
+                        telemetry.Power.PW4 = value;
                         hasTelemetryData = true;
                         break;
 

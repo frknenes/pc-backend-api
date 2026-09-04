@@ -19,9 +19,12 @@ public class TelemetryHub : Hub
         _logger.SignalRInfo($"UI bağlandı: {Context.ConnectionId}");
         await base.OnConnectedAsync();
         await Clients.Caller.SendAsync("connectionStatus", _tcpServer.GetConnectionStatus());
-        var controlState = _tcpServer.GetControlState();
-        if (controlState != null)
-            await Clients.Caller.SendAsync("controlState", controlState);
+
+        // Tarayıcı yenilendiğinde bellekteki eski state yerine Raspberry Pi'nin
+        // o andaki GPIO/VFD durumunu iste. GET_STATE donanımı değiştirmez.
+        var stateResult = await _tcpServer.SendCommand("GET_STATE");
+        if (stateResult.ControlState != null)
+            await Clients.Caller.SendAsync("controlState", stateResult.ControlState);
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)

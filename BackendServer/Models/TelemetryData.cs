@@ -130,7 +130,10 @@ public class PressureData
 
 public class PowerData
 {
-    public double? PW1 { get; set; } // Güc tüketimi verileri
+    public double? PW1 { get; set; } // HV güç tüketimi
+    public double? PW2 { get; set; } // Alt sistem güç tüketimi
+    public double? PW3 { get; set; } // Acil durum güç tüketimi
+    public double? PW4 { get; set; } // Toplam güç tüketimi
 }
 
 public class EmergencyData
